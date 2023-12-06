@@ -124,7 +124,7 @@ static uint8_t u8g2_clip_intersection2(u8g2_uint_t *ap, u8g2_uint_t *len, u8g2_u
   x,y		Upper left position of the line within the pixel buffer 
   len		length of the line in pixel, len must not be 0
   dir		0: horizontal line (left to right)
-		1: vertical line (top to bottom)
+                1: vertical line (top to bottom)
   This function first adjusts the y position to the local buffer. Then it
   will clip the line and call u8g2_draw_low_level_hv_line()
 
@@ -162,41 +162,50 @@ void u8g2_DrawHVLine(u8g2_t *u8g2, u8g2_uint_t x, u8g2_uint_t y, u8g2_uint_t len
       /* convert to two directions */    
       if ( len > 1 )
       {
-	if ( dir == 2 )
-	{
-	  x -= len;
-	  x++;
-	}
-	else if ( dir == 3 )
-	{
-	  y -= len;
-	  y++;
-	}
+        if ( dir == 2 )
+        {
+          x -= len;
+          x++;
+        }
+        else if ( dir == 3 )
+        {
+          y -= len;
+          y++;
+        }
       }
       dir &= 1;  
       
       /* clip against the user window */
       if ( dir == 0 )
       {
-	if ( y < u8g2->user_y0 )
-	  return;
-	if ( y >= u8g2->user_y1 )
-	  return;
-	if ( u8g2_clip_intersection2(&x, &len, u8g2->user_x0, u8g2->user_x1) == 0 )
-	  return;
+        if ( y < u8g2->user_y0 )
+          return;
+        if ( y >= u8g2->user_y1 )
+          return;
+        if ( u8g2_clip_intersection2(&x, &len, u8g2->user_x0, u8g2->user_x1) == 0 )
+          return;
       }
       else
       {
-	if ( x < u8g2->user_x0 )
-	  return;
-	if ( x >= u8g2->user_x1 )
-	  return;
-	if ( u8g2_clip_intersection2(&y, &len, u8g2->user_y0, u8g2->user_y1) == 0 )
-	  return;
+        if ( x < u8g2->user_x0 )
+          return;
+        if ( x >= u8g2->user_x1 )
+          return;
+        if ( u8g2_clip_intersection2(&y, &len, u8g2->user_y0, u8g2->user_y1) == 0 )
+          return;
       }
       
-      
-      u8g2->cb->draw_l90(u8g2, x, y, len, dir);
+        if(u8g2->drawDottedLines){
+          if ( dir == 0 ) { //horizontal
+            for( ; len > 0; x++, len-- )
+              if(x%2==0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
+          } else { //vertical
+            for( ; len > 0; y++, len-- )
+              if(y%2==0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
+          } 
+
+        }else      
+          u8g2->cb->draw_l90(u8g2, x, y, len, dir);
     }
 }
 

@@ -382,7 +382,7 @@ struct u8g2_struct
 					
 	// the following variable should be renamed to is_buffer_auto_clear
   uint8_t is_auto_page_clear; 		/* set to 0 to disable automatic clear of the buffer in firstPage() and nextPage() */
-  
+  _Bool drawDottedLines;
 };
 
 #define u8g2_GetU8x8(u8g2) ((u8x8_t *)(u8g2))
