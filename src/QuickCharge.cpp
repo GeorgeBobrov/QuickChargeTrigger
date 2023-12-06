@@ -87,11 +87,6 @@ void setup(void)
 
 
 
-constexpr byte fontBaseline = 3;
-constexpr byte additionalSpacingForFirstLine = 3;
-constexpr byte yellowHeaderHeight = 16;
-constexpr byte spacingBetweenLines = 2; 
-
 constexpr byte averCount = 5;
 int16_t AdcAveraging[averCount];
 byte AdcAveragingInd = 0;
@@ -128,10 +123,10 @@ void loop(void)
 
 
 	if (QC_AdapterType == QC_GEN2) {
-		bool changed = false;
-
 		switch (selectAction) {
-			case SelectAction::selectQCmode:
+			case SelectAction::selectQCmode: {
+				bool changed = false;
+
 				if (encoder.isRight()) {
 					if (QC_VoltMode < QC_VAR) 
 						QC_VoltMode += 1;
@@ -154,7 +149,7 @@ void loop(void)
 					else
 						clickAction = ClickAction::checkQC;
 				}
-			break;
+			} break;
 
 			case SelectAction::selectVarVoltage: 
 				if (encoder.isRight()) 
@@ -182,8 +177,16 @@ void loop(void)
 			if (encoder.isTurn()) break;
 
 			display.setFont(u8g2_font_6x10_tf);
+			// display.setFontPosBottom();
 			constexpr byte charWidth = 6;
 			constexpr byte charHeight = 10;
+
+			byte fontBaseline = abs(display.getFontDescent());
+			constexpr byte additionalSpacingForFirstLine = 3;
+			constexpr byte yellowHeaderHeight = 16;
+			constexpr byte spacingBetweenLines = 2; 
+
+
 			byte y = charHeight - fontBaseline + additionalSpacingForFirstLine;
 
 			display.setCursor(2, y);
@@ -229,8 +232,14 @@ void loop(void)
 				}
 				if (itemInd == QC_VoltMode)
 					xSelectedMode = x;
+				else	
+					display.drawHLine(x + 1, y + fontBaseline, round(modeItemWidth) - 2);
 			}
+
+// drawDottedLines feature added in \U8g2\src\clib\u8g2_hvline.c and \U8g2\src\clib\u8g2.h
+			display.getU8g2()->drawDottedLines = true;
 			display.drawFrame(xSelectedMode, y-9, round(modeItemWidth), 12);
+			display.getU8g2()->drawDottedLines = false;
 
 
 			// int voltageADC = analogRead(pinVoltageMeasure);
@@ -260,8 +269,8 @@ void loop(void)
 				display.setCursor(10*charWidth, y);
 				display.print(QC.voltage());
 			}
-			// display.setCursor(0, y);
-			// display.print(curADC);
+			display.setCursor(0, y);
+			display.print(fontBaseline);
 			// display.setCursor(charWidth*7, y);
 			// display.print(voltageADC);
 			// display.setCursor(charWidth*14, y);

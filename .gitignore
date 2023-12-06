@@ -7,3 +7,12 @@
 include/README
 lib/README
 test/README
+
+lib/U8g2/*
+!lib/U8g2/library.properties
+!lib/U8g2/src/
+lib/U8g2/src/*
+!lib/U8g2/src/clib/
+lib/U8g2/src/clib/*
+!lib/U8g2/src/clib/u8g2.h
+!lib/U8g2/src/clib/u8g2_hvline.c
