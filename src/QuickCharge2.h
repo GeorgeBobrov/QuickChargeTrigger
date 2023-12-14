@@ -105,8 +105,10 @@ public:
         return QC_GEN1;                 // Возвращаем тип адаптера - QC1.0
     }
 
+    byte modeApplied;
     /* Метод установки режима выходного напряжения адаптера */
     void setMode(uint8_t mode) {
+        modeApplied = mode;
         /*
         | (D+) | (D-) |   Mode   |
         | 0.6V |  0V  |   5V     |

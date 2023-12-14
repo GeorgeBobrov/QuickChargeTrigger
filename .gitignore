@@ -3,10 +3,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-*Resistive divider.xlsx
 include/README
 lib/README
 test/README
+ProjectFiles/*
 
 lib/U8g2/*
 !lib/U8g2/library.properties

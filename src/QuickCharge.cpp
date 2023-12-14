@@ -33,21 +33,42 @@ U8G2_SSD1306_128X64_NONAME_1_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 QuickCharge QC (pinDpHighRes, pinDpLowRes, pinDmHighRes, pinDmLowRes, QC_CLASS_B);
 
 enum class ClickAction: int8_t {
-	checkQC,
-	toggleVarMode,
+	testQC,
+	enterSelectedQC_Mode,
+	exitVarMode
 };
 ClickAction clickAction;
 
 enum class SelectAction: int8_t {
-	selectQCmode,
+	selectQC_Mode,
 	selectVarVoltage
 };
 SelectAction selectAction;
-byte QC_VoltMode = 0;
-bool QC_VarMode = false;
+byte QC_ModeSelecting = 0;
+
 
 int QC_AdapterType = 0;
-bool redraw = false;
+void setQC_AdapterType(byte aQC_AdapterType) {
+	QC_AdapterType = aQC_AdapterType;
+
+	if (QC_AdapterType == QC_GEN2) {
+		selectAction = SelectAction::selectQC_Mode;
+		clickAction = ClickAction::enterSelectedQC_Mode;
+	} else {
+		clickAction = ClickAction::testQC;
+		QC_ModeSelecting = 0;
+	}
+}
+
+enum class TestQC_Mode: int8_t {
+	wasntTested,
+	pending,
+	complited
+} testQC_Mode;
+
+unsigned long lastTimeDrawMeasuredVoltage_us = 0;
+bool redraw;
+
 
 void isrCLK() {
 	encoder.tick();
@@ -82,74 +103,77 @@ void setup(void)
 
 	analogReference(INTERNAL1V024);
 	analogReadResolution(ADC_RESOLUTION);
-	redraw = true;
 }
 
 
 
-constexpr byte averCount = 5;
-int16_t AdcAveraging[averCount];
-byte AdcAveragingInd = 0;
-
 void loop(void)
 {
+	if (testQC_Mode == TestQC_Mode::pending) {
+		setQC_AdapterType(QC.begin());      
+		testQC_Mode = TestQC_Mode::complited;
+	}
+
 	encoder.tick();
-	if (encoder.isHolded()) { // for debug
-		pinMode(QC._dp_h, OUTPUT);    
-        pinMode(QC._dp_l, OUTPUT);    
-		pinMode(QC._dm_h, OUTPUT);    
-		pinMode(QC._dm_l, OUTPUT);    
-		QC._set_dp(SET_600MV);        
+	if (encoder.isHolded()) {
+		if (clickAction == ClickAction::testQC) { // for debug, pretending Adapter is QC_GEN2
+			pinMode(QC._dp_h, OUTPUT);    
+			pinMode(QC._dp_l, OUTPUT);    
+			pinMode(QC._dm_h, OUTPUT);    
+			pinMode(QC._dm_l, OUTPUT);  
+			QC._5vOnly = false;  
+			QC._set_dp(SET_600MV);        
 
-		QC_AdapterType = QC_GEN2;
+			setQC_AdapterType(QC_GEN2);
+		} else {
+			QC_ModeSelecting = QC_5V;
+			QC.setMode(QC_ModeSelecting);
+			testQC_Mode = TestQC_Mode::pending;
+		}
+
+		redraw = true;
 	}
 
-	switch (clickAction) {
-		case ClickAction::checkQC: 
-			if (encoder.isClick()) 
-				QC_AdapterType = QC.begin();              
-		break;
+	if (encoder.isClick()) {
+		switch (clickAction) {
+			case ClickAction::testQC: 
+				testQC_Mode = TestQC_Mode::pending;
+			break;
 
-		case ClickAction::toggleVarMode: 
-			if (encoder.isClick()) {
-				QC_VarMode = !QC_VarMode;
-				if (QC_VarMode)
+			case ClickAction::enterSelectedQC_Mode: 
+				QC.setMode(QC_ModeSelecting);
+
+				if (QC.modeApplied == QC_VAR) {
 					selectAction = SelectAction::selectVarVoltage;
-				else
-					selectAction = SelectAction::selectQCmode;
-			}
-		break;
-	}
+					clickAction = ClickAction::exitVarMode;
+				} else {
+					selectAction = SelectAction::selectQC_Mode;
+				}
+			break;
 
+			case ClickAction::exitVarMode: 
+				selectAction = SelectAction::selectQC_Mode;
+				clickAction = ClickAction::enterSelectedQC_Mode;
+				QC_ModeSelecting = QC_5V;
+				QC.setMode(QC_ModeSelecting);
+			break;
+		}
+
+		redraw = true;
+	}
 
 	if (QC_AdapterType == QC_GEN2) {
 		switch (selectAction) {
-			case SelectAction::selectQCmode: {
-				bool changed = false;
+			case SelectAction::selectQC_Mode: 
+				if (encoder.isRight()) 
+					if (QC_ModeSelecting < QC_VAR) 
+						QC_ModeSelecting += 1;
 
-				if (encoder.isRight()) {
-					if (QC_VoltMode < QC_VAR) 
-						QC_VoltMode += 1;
-					
-					changed = true;
-				}
+				if (encoder.isLeft()) 
+					if (QC_ModeSelecting > 0)
+						QC_ModeSelecting -= 1;
 
-				if (encoder.isLeft()) {
-					if (QC_VoltMode > 0)
-						QC_VoltMode -= 1;
-
-					changed = true;
-				}  
-
-				if (changed) {
-					QC.setMode(QC_VoltMode);
-
-					if (QC_VoltMode == QC_VAR) 
-						clickAction = ClickAction::toggleVarMode;
-					else
-						clickAction = ClickAction::checkQC;
-				}
-			} break;
+			break;
 
 			case SelectAction::selectVarVoltage: 
 				if (encoder.isRight()) 
@@ -160,129 +184,183 @@ void loop(void)
 
 			break;
 		}
+	} else { // Clear flags
+		encoder.isRight();
+		encoder.isLeft();
 	}
 
-	encoder.isTurn(); // Clear turn flag before displaying
+	if (encoder.isTurn()) // Clear turn flag before displaying
+		redraw = true;
+	 
 
-	// unsigned long curTime_us = micros();
-	// unsigned long periodFromLastMeasure_us = curTime_us - lastTimeMeasure_us;
-	// if (periodFromLastMeasure_us >= 50000) {
-	// 	lastTimeMeasure_us = curTime_us;
+	unsigned long curTime_us = micros();
+	unsigned long periodFromLastMeasure_us = curTime_us - lastTimeDrawMeasuredVoltage_us;
+	if ((periodFromLastMeasure_us >= 200000) || redraw) {
+		lastTimeDrawMeasuredVoltage_us = curTime_us;
+		redraw = false;
 
-	// if (redraw) 
-	{
+		// int voltageADC = analogRead(pinVoltageMeasure);
+		// Averaging a number of measurements for more stable readings
+		constexpr byte averCount = 5;
+		int AdcSum = 0;
+		for (byte i = 0; i < averCount; i++) 
+			AdcSum += analogRead(pinVoltageMeasure);
+		float voltageADC = float(AdcSum) / averCount;		
+
 		display.firstPage();
 		do {
 			encoder.tick();
 			if (encoder.isTurn()) break;
 
-			display.setFont(u8g2_font_6x10_tf);
-			// display.setFontPosBottom();
+			display.setFont(u8g2_font_6x10_tr);
+			// byte fontBaseline = abs(display.getFontDescent());
+			display.setFontPosBottom(); // and dont messing with fontBaseline
+
 			constexpr byte charWidth = 6;
-			constexpr byte charHeight = 10;
+			byte charHeight = /*10*/display.getMaxCharHeight();
+			constexpr byte displayWidth = 128;
 
-			byte fontBaseline = abs(display.getFontDescent());
 			constexpr byte additionalSpacingForFirstLine = 3;
+			byte y = charHeight + additionalSpacingForFirstLine;
+			byte x = 0;
+
+			display.setCursor(x, y);
+			display.print(F("QuickCharge"));
+
+			x = 13*charWidth;
+			display.setCursor(x, y);
+
+			if ((testQC_Mode == TestQC_Mode::wasntTested) || (testQC_Mode == TestQC_Mode::complited))
+				switch (clickAction) {
+					case ClickAction::testQC:
+						display.print(F("Test")); 
+						display.drawFrame(x - 3, y - charHeight - 1, 4*charWidth + 5, charHeight + 3);
+					break;
+				}    
+
+
 			constexpr byte yellowHeaderHeight = 16;
-			constexpr byte spacingBetweenLines = 2; 
-
-
-			byte y = charHeight - fontBaseline + additionalSpacingForFirstLine;
-
-			display.setCursor(2, y);
-			switch (clickAction) {
-				case ClickAction::toggleVarMode:
-					if (QC_VarMode) 
-						display.print(F("Exit  Var Mode")); 
-					else
-						display.print(F("Go to Var Mode")); 
-				break;
-				case ClickAction::checkQC:
-					display.print(F("Check QuickCharge")); 
-				break;
-			}    
-			display.drawFrame(0, y-9, 127, 13);
-
-			y = yellowHeaderHeight + charHeight - fontBaseline;
+			y = yellowHeaderHeight + charHeight;
 			display.setCursor(0, y);
-			switch (QC_AdapterType) {                    
-				case QC_NA:   display.print(F("QC is not available")); break;
-				case QC_GEN1: display.print(F("QC1.0 - (5V 2A)")); break;
-				case QC_GEN2: display.print(F("QC2.0 or QC3.0")); break;
-			}
 
-			y += (charHeight + spacingBetweenLines);
-			display.setCursor(0, y);
-			display.print(F("Mode,V:"));
-
-			byte xSelectedMode = 0;
-			constexpr byte modeCaptionWidth = 8*charWidth;
-			constexpr byte modeItemsWidth = 128 - modeCaptionWidth;
-			constexpr float modeItemWidth = modeItemsWidth / 5.0;
-			for (byte itemInd = 0; itemInd < 5; itemInd++) {
-				byte x = round(modeCaptionWidth + modeItemWidth*itemInd);
-				display.setCursor(x + 1, y);
-
-				switch (itemInd) {                    
-					case QC_5V:  display.print(F(" 5")); break;
-					case QC_9V:  display.print(F(" 9")); break;
-					case QC_12V: display.print(F("12")); break;
-					case QC_20V: display.print(F("20")); break;
-					case QC_VAR: display.print(F("Var")); break;
+			if (testQC_Mode == TestQC_Mode::complited) 
+				switch (QC_AdapterType) {                    
+					case QC_NA:   display.print(F("QC is not available")); break;
+					case QC_GEN1: display.print(F("QC1 - (5V 2A)")); break;
+					case QC_GEN2: display.print(F("QC2/QC3. Set Mode:")); break;
 				}
-				if (itemInd == QC_VoltMode)
-					xSelectedMode = x;
-				else	
-					display.drawHLine(x + 1, y + fontBaseline, round(modeItemWidth) - 2);
+
+			display.setFont(u8g2_font_6x13_tr);
+			charHeight = display.getMaxCharHeight();
+
+
+			if ((QC_AdapterType == QC_GEN2) && (selectAction == SelectAction::selectQC_Mode)) {
+				constexpr byte itemCount = 5;
+				constexpr byte spacingBetweenItems = 4;
+				constexpr byte modeCaptionWidth = /*7*charWidth + 1*/0;
+				constexpr byte modeItemsWidth = displayWidth - modeCaptionWidth - (spacingBetweenItems * (itemCount - 1));
+				constexpr float modeItemWidth = (float(modeItemsWidth) / itemCount);
+				y += (charHeight + 4);
+
+				for (byte itemInd = 0; itemInd < itemCount; itemInd++) {
+					String str;
+					switch (itemInd) {                    
+						case QC_5V:  str = F("5V"); break;
+						case QC_9V:  str = F("9V"); break;
+						case QC_12V: str = F("12V"); break;
+						case QC_20V: str = F("20V"); break;
+						case QC_VAR: str = F("Var"); break;
+					}
+
+					byte strWidth = str.length() * charWidth;
+					
+					x = round(modeCaptionWidth + (modeItemWidth + spacingBetweenItems)*itemInd);
+					constexpr byte lastBlankPixelInChar = 1;
+					byte offsetForCentering = (modeItemWidth - (strWidth - lastBlankPixelInChar)) / 2;
+					display.setCursor(x + offsetForCentering, y);
+
+					if (itemInd == QC.modeApplied) 
+						display.setFont(u8g2_font_6x13B_tr);
+					else	
+						display.setFont(u8g2_font_6x13_tr);
+
+					display.print(str);
+
+					if (itemInd == QC.modeApplied) {
+						display.drawFrame(x, y - charHeight - 1, round(modeItemWidth), charHeight + 2);
+					} else 
+						if (itemInd == QC_ModeSelecting) {
+		// drawDottedLines feature added in \U8g2\src\clib\u8g2_hvline.c and \U8g2\src\clib\u8g2.h
+							display.getU8g2()->drawDottedLines = true;
+							display.drawFrame(x, y - charHeight - 1, round(modeItemWidth), charHeight + 2);
+							display.getU8g2()->drawDottedLines = false;
+						} else {
+							display.getU8g2()->drawDottedLines = true;
+							display.drawHLine(x, y, round(modeItemWidth));
+							display.getU8g2()->drawDottedLines = false;
+						}	
+
+				}
+
 			}
 
-// drawDottedLines feature added in \U8g2\src\clib\u8g2_hvline.c and \U8g2\src\clib\u8g2.h
-			display.getU8g2()->drawDottedLines = true;
-			display.drawFrame(xSelectedMode, y-9, round(modeItemWidth), 12);
-			display.getU8g2()->drawDottedLines = false;
+
+			if (selectAction == SelectAction::selectVarVoltage) {
+				y += (charHeight + 4);
+				x = 0;
+				display.setCursor(x, y);
+				display.print(F("Set V:"));
+				
+				float voltage = QC.voltage() / 1000.0;
+				byte emptyCharOffset = (voltage < 10) ? charWidth : 0;
+
+				x = 7.5*charWidth;	
+				display.setCursor(x + emptyCharOffset, y);
+				display.print(voltage);
+				display.getU8g2()->drawDottedLines = true;
+				display.drawFrame(x - 3, y - charHeight - 1, 5*charWidth + 5, charHeight + 3);
+				display.getU8g2()->drawDottedLines = false;
+
+				display.setFont(u8g2_font_6x10_tr);
+				charHeight = display.getMaxCharHeight();
+				x = 14*charWidth;
+				y -= 1;
+				display.setCursor(x, y);
+				display.print(F("ExitVar")); 
+				display.drawFrame(x - 2, y - charHeight - 1, 7*charWidth + 3, charHeight + 3);
+				y += 1;
+			} 
 
 
-			// int voltageADC = analogRead(pinVoltageMeasure);
-			// Averaging a number of measurements for more stable readings
-			int curADC = analogRead(pinVoltageMeasure);
+			{
+				float measuredVoltage = voltageADC * (resistorDividerCoef * internalReferenceVoltage / MAX_ADC_VALUE);
 
-			AdcAveraging[AdcAveragingInd] = curADC;
-			AdcAveragingInd++;
-			if (AdcAveragingInd >= averCount) AdcAveragingInd = 0;
+				display.setFont(u8g2_font_6x13_tr);
+				charHeight = display.getMaxCharHeight();
 
-			int AdcSum = 0;
-			for (byte i = 0; i < averCount; i++) 
-				AdcSum += AdcAveraging[i];
+				y += (charHeight + 4);
+				x = 0;
+				display.setCursor(x, y);
+				display.print(F("Meas V:"));
 
-			float voltageADC = float(AdcSum) / averCount;
-
-			float voltage_V = voltageADC * (resistorDividerCoef * internalReferenceVoltage / MAX_ADC_VALUE);
-
-			y += (charHeight + spacingBetweenLines);
-			display.setCursor(0, y);
-			display.print(F("Volt meas"));
-			display.setCursor(charWidth*10, y);
-			display.print(voltage_V);
-
-			y += (charHeight + spacingBetweenLines);
-			if (QC_VarMode) {
-				display.setCursor(10*charWidth, y);
-				display.print(QC.voltage());
+				byte emptyCharOffset = (measuredVoltage < 10) ? charWidth : 0;
+				x = 7.5*charWidth;
+				display.setCursor(x + emptyCharOffset, y);
+				display.print(measuredVoltage);				
 			}
-			display.setCursor(0, y);
-			display.print(fontBaseline);
-			// display.setCursor(charWidth*7, y);
-			// display.print(voltageADC);
-			// display.setCursor(charWidth*14, y);
-			// display.print(AdcSum);
+
+
+			// display.setFont(u8g2_font_6x13B_tn);
+			// display.setCursor(charWidth*3, y);
+			// display.print(F("12"));
+
+			// open_iconic_arrow_1x1
 
 			encoder.tick();
 			if (encoder.isTurn()) break;
 
 		} while ( display.nextPage() );
 
-		redraw = false;
 	}
-
 
 }

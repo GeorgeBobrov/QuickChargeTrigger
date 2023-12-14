@@ -195,16 +195,17 @@ void u8g2_DrawHVLine(u8g2_t *u8g2, u8g2_uint_t x, u8g2_uint_t y, u8g2_uint_t len
           return;
       }
       
-        if(u8g2->drawDottedLines){
+        if (u8g2->drawDottedLines) {
+          u8g2_uint_t pix = 0;
           if ( dir == 0 ) { //horizontal
-            for( ; len > 0; x++, len-- )
-              if(x%2==0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
+            for( ; len > 0; x++, len--, pix++ )
+              if(pix % 2 == 0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
           } else { //vertical
-            for( ; len > 0; y++, len-- )
-              if(y%2==0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
+            for( ; len > 0; y++, len--, pix++ )
+              if(pix % 2 == 0) u8g2->cb->draw_l90(u8g2, x, y, 1, dir);
           } 
 
-        }else      
+        } else      
           u8g2->cb->draw_l90(u8g2, x, y, len, dir);
     }
 }
