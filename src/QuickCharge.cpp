@@ -214,7 +214,7 @@ void loop(void)
 
 			display.setFont(u8g2_font_6x10_tr);
 			// byte fontBaseline = abs(display.getFontDescent());
-			display.setFontPosBottom(); // and dont messing with fontBaseline
+			display.setFontPosBottom(); // and don't mess around with fontBaseline
 
 			constexpr byte charWidth = 6;
 			byte charHeight = /*10*/display.getMaxCharHeight();
@@ -290,7 +290,7 @@ void loop(void)
 						display.drawFrame(x, y - charHeight - 1, round(modeItemWidth), charHeight + 2);
 					} else 
 						if (itemInd == QC_ModeSelecting) {
-		// drawDottedLines feature added in \U8g2\src\clib\u8g2_hvline.c and \U8g2\src\clib\u8g2.h
+		// drawDottedLines feature added in modified U8g2 https://github.com/GeorgeBobrov/U8g2
 							display.getU8g2()->drawDottedLines = true;
 							display.drawFrame(x, y - charHeight - 1, round(modeItemWidth), charHeight + 2);
 							display.getU8g2()->drawDottedLines = false;
